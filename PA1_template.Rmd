@@ -5,21 +5,128 @@ output:
     keep_md: true
 ---
 
+All the codes presented here assume the following:
+
+1. You are using RStudio
+
+2. You are working in a working directory that prefer to be
+
+3. In that working directory, you already have the "activity.zip" file downloaded from this [link](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)
+
+4. You have already extracted the "activity.csv" files from that zip file into your current working directory
+
+5. You have not altered anything significant from that original "activity.csv" file
+
+Also, you must have the following packages installed for some of the code chunks to work:
+
+- data.table Package (for data processing)
+
+- lattice Package (for plotting)
 
 ## Loading and preprocessing the data
 
+For this assignment, we expect to perform data manipulations. So, it would be beneficial for us to use the data.table package.
 
+To read in the data and transform the data into a data.table format, we use the following code:
+
+```{r}
+library(data.table)
+data <- read.csv("activity.csv", stringsAsFactors = FALSE)
+data <- data.table(data)
+```
+
+Then we use **str**, **summary**, and **head** to get some more aditional information on the data.
+
+```{r}
+str(data)
+summary(data)
+head(data)
+```
+
+We need to modify the class of the date column since we are going to manipulate the data by dates later.
+
+```{r}
+data$date <- as.Date(data$date)
+str(data)
+```
+
+With that, everything looks to be okay, so we move on to the next activity.
 
 ## What is mean total number of steps taken per day?
 
+For this part, we need the **sum** of the steps per day and the **mean** and **median** of those sums (ignoring missing values).
 
+```{r}
+sum.bydate <- data[, sum(steps, na.rm = TRUE), by = date]
+head(sum.bydate)
+
+#I used breaks = 10 to have a more detailed look in the histogram
+hist(sum.bydate$V1, main = "Total number of steps taken each day", xlab = "Number of steps", breaks = 10)
+
+mean_sum.bydate <- mean(sum.bydate$V1, na.rm = TRUE)
+median_sum.bydate <- median(sum.bydate$V1, na.rm = TRUE)
+```
+
+The mean total number of steps per day is `r mean_sum.bydate` and the median is `r median_sum.bydate`.
 
 ## What is the average daily activity pattern?
 
+```{r}
+mean.byint <- data[, mean(steps, na.rm = TRUE), by = interval]
+head(mean.byint)
 
+#I modified xasp to have a more detailed look in the plot
+plot(mean.byint$interval, mean.byint$V1, main = "Average daily pattern", xlab = "Interval", ylab = "Number of steps", type = "l", xaxp = c(0, 2355, 15))
 
-## Imputing missing values
+max_introw <- which.max(mean.byint$V1)
+max_int <- mean.byint[max_introw, interval]
+max_int.steps <- mean.byint[max_introw, V1]
+```
 
+The maximum average number of steps per interval is `r max_int.steps` and it is in interval `r max_int`.
 
+## Inputting missing values
+
+```{r}
+num.NA <- sum(is.na(data$steps))
+```
+
+The total number of missing values in the dataset is `r num.NA`.
+
+If we are manupulating the data per day, using the original data with the missing days would be alright. But if we are manupulating the data per interval, per day of the week, or any other basis for which the missing days are included, then we will possibly encounter biases. To remedy this, we will *change all the NAs to the average number of steps per interval per day of the week*.
+
+```{r}
+data[, day := weekdays(data$date)]
+data[, mean := mean(steps, na.rm = TRUE), by = list(interval, day)]
+data[, new.steps := ifelse(is.na(data$steps), mean, steps)]
+
+##To create a new dataset that is equal to the original dataset but with the missing data filled in
+data2 <- copy(data[, list(steps = new.steps, date, interval)])
+```
+
+```{r}
+sum.bydate2 <- data2[, sum(steps), by = date]
+head(sum.bydate2)
+
+#I used breaks = 10 to have a more detailed look in the histogram
+hist(sum.bydate2$V1, main = "Total number of steps taken each day", xlab = "Number of steps", breaks = 10)
+
+mean_sum.bydate2 <- mean(sum.bydate2$V1)
+median_sum.bydate2 <- median(sum.bydate2$V1)
+```
+
+The mean total number of steps per day is `r mean_sum.bydate2` and the median is `r median_sum.bydate2`.
+
+The histogram, mean value, and mediam value from this new dataset with the missing values filled in are all different from the old dataset with missing values. The inputting of missing data makes estimates of the total daily number of steps possibly "nearer" to the true estimate unlike the estimates from the dataset with missing values which give underestimates due to missing days.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r}
+data2[, day := weekdays(data2$date)]
+data2[, weekday := ifelse(day == "Saturday" | day == "Sunday", "Weekend", "Weekday")]
+
+data2[, mean := mean(steps), by = list(interval, weekday)]
+
+library(lattice)
+xyplot(mean ~ interval | weekday, data = data2, layout = c(1, 2), xlab = "Interval", ylab = "Number of steps", type = "l")
+```
